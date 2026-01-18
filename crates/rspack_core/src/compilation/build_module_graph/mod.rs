@@ -36,10 +36,24 @@ impl Compilation {
       self.module_executor = Some(module_executor);
     }
 
+    // Take the artifact and immediately replace with default to prevent panics
+    // when JS plugins access compilation.get_module_graph() during hooks.
     let artifact = self.build_module_graph_artifact.take();
     self
       .build_module_graph_artifact
-      .replace(build_module_graph(self, artifact).await?);
+      .replace(Default::default());
+
+    // Store the result to ensure artifact is always restored, even on error
+    let result = build_module_graph(self, artifact).await;
+    match result {
+      Ok(artifact) => {
+        self.build_module_graph_artifact.replace(artifact);
+      }
+      Err(e) => {
+        // Default already in place from above, just return error
+        return Err(e);
+      }
+    }
 
     self.in_finish_make.store(true, Ordering::Release);
 

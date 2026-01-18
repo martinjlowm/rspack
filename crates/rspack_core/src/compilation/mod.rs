@@ -638,23 +638,37 @@ impl Compilation {
       self.add_entry(entry, options).await?;
     }
 
+    // Take the artifact and immediately replace with default to prevent panics
+    // when JS plugins access compilation.get_module_graph() during hooks.
     let make_artifact = self.build_module_graph_artifact.take();
-    self.build_module_graph_artifact.replace(
-      update_module_graph(
-        self,
-        make_artifact,
-        vec![UpdateParam::BuildEntry(
-          self
-            .entries
-            .values()
-            .flat_map(|item| item.all_dependencies())
-            .chain(self.global_entry.all_dependencies())
-            .copied()
-            .collect(),
-        )],
-      )
-      .await?,
-    );
+    self
+      .build_module_graph_artifact
+      .replace(Default::default());
+
+    // Store the result to ensure artifact is always restored, even on error
+    let result = update_module_graph(
+      self,
+      make_artifact,
+      vec![UpdateParam::BuildEntry(
+        self
+          .entries
+          .values()
+          .flat_map(|item| item.all_dependencies())
+          .chain(self.global_entry.all_dependencies())
+          .copied()
+          .collect(),
+      )],
+    )
+    .await;
+    match result {
+      Ok(artifact) => {
+        self.build_module_graph_artifact.replace(artifact);
+      }
+      Err(e) => {
+        // Default already in place from above, just return error
+        return Err(e);
+      }
+    }
     Ok(())
   }
 
@@ -689,23 +703,37 @@ impl Compilation {
 
     // Recheck entry and clean useless entry
     // This should before finish_modules hook is called, ensure providedExports effects on new added modules
+    // Take the artifact and immediately replace with default to prevent panics
+    // when JS plugins access compilation.get_module_graph() during hooks.
     let make_artifact = self.build_module_graph_artifact.take();
-    self.build_module_graph_artifact.replace(
-      update_module_graph(
-        self,
-        make_artifact,
-        vec![UpdateParam::BuildEntry(
-          self
-            .entries
-            .values()
-            .flat_map(|item| item.all_dependencies())
-            .chain(self.global_entry.all_dependencies())
-            .copied()
-            .collect(),
-        )],
-      )
-      .await?,
-    );
+    self
+      .build_module_graph_artifact
+      .replace(Default::default());
+
+    // Store the result to ensure artifact is always restored, even on error
+    let result = update_module_graph(
+      self,
+      make_artifact,
+      vec![UpdateParam::BuildEntry(
+        self
+          .entries
+          .values()
+          .flat_map(|item| item.all_dependencies())
+          .chain(self.global_entry.all_dependencies())
+          .copied()
+          .collect(),
+      )],
+    )
+    .await;
+    match result {
+      Ok(artifact) => {
+        self.build_module_graph_artifact.replace(artifact);
+      }
+      Err(e) => {
+        // Default already in place from above, just return error
+        return Err(e);
+      }
+    }
     Ok(())
   }
 
@@ -997,19 +1025,32 @@ impl Compilation {
     module_identifiers: IdentifierSet,
     f: impl Fn(Vec<&BoxModule>) -> T,
   ) -> Result<T> {
+    // Take the artifact and immediately replace with default to prevent panics
+    // when JS plugins access compilation.get_module_graph() during hooks.
     let artifact = self.build_module_graph_artifact.take();
+    self
+      .build_module_graph_artifact
+      .replace(Default::default());
 
     // https://github.com/webpack/webpack/blob/19ca74127f7668aaf60d59f4af8fcaee7924541a/lib/Compilation.js#L2462C21-L2462C25
     self.module_graph_cache_artifact.unfreeze();
 
-    self.build_module_graph_artifact.replace(
-      update_module_graph(
-        self,
-        artifact,
-        vec![UpdateParam::ForceBuildModules(module_identifiers.clone())],
-      )
-      .await?,
-    );
+    // Store the result to ensure artifact is always restored, even on error
+    let result = update_module_graph(
+      self,
+      artifact,
+      vec![UpdateParam::ForceBuildModules(module_identifiers.clone())],
+    )
+    .await;
+    match result {
+      Ok(artifact) => {
+        self.build_module_graph_artifact.replace(artifact);
+      }
+      Err(e) => {
+        // Default already in place from above, just return error
+        return Err(e);
+      }
+    }
 
     let module_graph = self.get_module_graph();
     Ok(f(module_identifiers

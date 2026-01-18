@@ -29,10 +29,24 @@ impl Compilation {
   pub async fn finish_build_module_graph(&mut self) -> Result<()> {
     self.in_finish_make.store(false, Ordering::Release);
     // clean up the entry deps
+    // Take the artifact and immediately replace with default to prevent panics
+    // when JS plugins access compilation.get_module_graph() during hooks.
     let make_artifact = self.build_module_graph_artifact.take();
     self
       .build_module_graph_artifact
-      .replace(finish_build_module_graph(self, make_artifact).await?);
+      .replace(Default::default());
+
+    // Store the result to ensure artifact is always restored, even on error
+    let result = finish_build_module_graph(self, make_artifact).await;
+    match result {
+      Ok(artifact) => {
+        self.build_module_graph_artifact.replace(artifact);
+      }
+      Err(e) => {
+        // Default already in place from above, just return error
+        return Err(e);
+      }
+    }
     // sync assets to module graph from module_executor
     if let Some(module_executor) = &mut self.module_executor {
       let mut module_executor = std::mem::take(module_executor);
